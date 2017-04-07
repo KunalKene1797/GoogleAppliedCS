@@ -11,7 +11,7 @@ Program Overview: https://cswithandroid.withgoogle.com
 
 [2) A-2-Scarne's Dice](#A-2)
 
-[3) A-3-](#A-3)
+[3) A-3-Word Stack](#A-3)
 
 [4) A-4-](#A-4)
 
@@ -212,9 +212,100 @@ Although the game (hopefully) works roughly as intended you may find the compute
 
 
 <a name="A-3"></a>
-### A-3-
+### A-3-Word Stack
 
+The app for this workshop is a single-user word game called WordStack. The idea of the game is to try to separate out two words of the same length whose letters have been scrambled (but the order of the letters has been preserved). For example, 'cat' and 'dog' might get scrambled in many ways but 'c' will always come before 'a' and 'a' will always come before 't'. Similarly, 'd' will always come before 'o' and 'o' will always come before 'g'. So we get permutations like:
 
+* cdaotg
+* cadogt
+* catdog
+* dogcat
+* dcoagt
+* ...
+But never 'actdog' ('a' is out of order) or 'coatdg' ('o' out of order).
+
+This is pretty easy to solve when you can see the whole scrambled string and for short words but it gets much harder when you can only see one letter at a time and attempt longer words.
+
+**Tour of code**
+
+The starter code is broken up into three classes:
+
+* MainActivity which is at the heart of this app. It handles both initializing the app and responding to user input.
+* onCreate loads up the dictionary and finishes creating the UI.
+* TouchListener.onTouch moves the top tile to either of the white areas when the user touches the area.
+* DragListener.onDrag handles dragging the tiles around the screen. We'll implement that functionality later in the workshop. It is disabled for now.
+onStartGame and onUndo: handler for the on-screen buttons. Currently, they do nothing.
+* StackedLayout: The Android SDK contains several ViewGroup classes which are used to organize UI items. Some of the most common are LinearLayout to line up the items horizontally or vertically and RelativeLayout that allows items to be placed relative to each other. For this game, we will subclass LinearLayout to make a special layout that only shows the last View added to it. We will use this to represent the stack of tiles.
+  * push, pop: you will need to implement
+  * peek, empty are simple wrappers around Java's Stack
+  * clear will remove all tiles from the ViewGroup
+* LetterTile: A subclass of the TextView class that draws a single letter in the appropriate size and colors. You may need to adjust the tile and font size to fit your screen.
+  * moveToViewGroup: Move the current tile to a different ViewGroup. Removes the current tile from whatever ViewGroup it is currently in and adds it to the other specified ViewGroup. Returns true if that moves concludes the game.
+  * freeze, unfreeze: Will be used to keep a tile from being moved after it is placed.
+  * onTouchEvent: Handles the tile being touched by the user. So far it just calls its superclass but we will add more functionality to make the tile draggable.
+
+**Implementation**
+
+Start by extracting the desired words from the dictionary. In MainActivity.onCreate, we read the words from the file but need to store them in the words ArrayList if they are of the correct size. WORD_LENGTH defaults to 5 but feel to modify it to make the game easier or harder.
+
+Next, start implementing onStartGame. You will need to randomly pick two words from words (be sure to store them in the fields named word1 and word2 so that the answer is given when the game is over). Find a way to shuffle the letters of the words while preserving word order. The simplest way to do that is probably to create a counter for each word and randomly pick which word to grab a letter from and increment that counter until either word runs out and then pick all the letters in the word that was not exhausted. Write your scrambled string to the messageBox.
+
+You can now run your app to verify your scrambling algorithm.
+
+Instead of just printing the scrambled string to messageBox, create new LetterTile objects representing each letter of the string and push them (in reverse order!) onto stackedLayout.
+
+Which brings us to the StackedLayout class. Implement push to:
+
+* call removeView with the tile on top of the stack (if there is one) to hide that tile
+* push the specified tile onto the tiles stack
+* call addView with the tile that was just pushed
+
+Similarly pop should:
+
+* pop a tile from tiles
+* call removeView with it
+* call addView with the tile that is now on top of the stack
+* return the popped tile
+
+You should now be able to run the app and play the basic game by clicking on either white area to place the tiles.
+
+Playing a single game should work now but hitting the 'Start' button a second time will not clean up the game state. So go back to onStartGame and add code to call removeAllViews on word1LinearLayout and word2LinearLayout as well as to call clear on the StackLayout.
+
+Although the game is playable, it is quite hard to win. Let's make it easier by implementing the "undo" functionality that will allow the user to return tiles to the stack if they change their mind. To do so, you'll need to:
+
+* Create a Stack (not StackedLayout) of LetterTiles in MainActivity to keep track of the placed tiles (call it placedTiles).
+* In MainActivity.TouchListener.onTouch push the touched tile onto placedTiles.
+* In onUndo, pop the most recent tile from placedTiles and use moveToViewGroup to move it back to the stackedLayout.
+
+The game should now be manageable but there's a bit more polish to add.
+
+**Drag and drop**
+
+Adding drag-and-drop functionality to your app is a matter of:
+
+* making some of your Views draggable
+* making some of your ViewGroups able to receive dragged Views
+
+We'll do the former by changing LetterTile.onTouchEvent. Add some logic to check whether the tile is frozen. If it's not and motionEvent.getAction() is MotionEvent.ACTION_DOWN (meaning the user started touching the View), you'll need to call startDrag and return true. startDrag takes four parameters:
+
+* ClipData which encodes metadata about the object being dragged which is useful when your app needs to handle different types of draggable object. Since our app only has draggable tiles, you can just use ClipData.newPlainText("", "").
+* a View.DragShadowBuilder which allows you to control how your View looks when it's being dragged. Luckily for us, the default behavior of a TextView is all we need so you can just pass a new View.DragShadowBuilder(this).
+* myLocalState which is just this
+* flags for which you can specify 0
+
+If the tile is frozen or the action is something else, just return whatever the superclass's onTouchEvent returns.
+
+The code to make the LinearLayouts accept the tiles is provided in MainActivity.DragListener but is worth understanding. There are five kinds of actions that the onDrag method handles:
+
+* DragEvent.ACTION_DRAG_STARTED should highlight the areas that the dragged object can be dropped onto. In this case, we turn the LinearLayouts blue to indicate this (and call invalidate to let the system know to redraw itself).
+* DragEvent.ACTION_DRAG_ENTERED should highlight the area differently to indicate the object being dragged will be added to this ViewGroup if it is dropped. We do this by turning the area green.
+* DragEvent.ACTION_DRAG_EXITED. If the user enters the area but leaves without dropping the object, we need to reset the area to blue.
+* DragEvent.ACTION_DRAG_ENDED should reset the highlights once dragging is done (even if the object was not dropped anywhere that will accept it).
+* DragEvent.ACTION_DROP is where the interesting logic happens. When the dragged object is dropped we need to remove it from its former location and add to its new location.
+
+All you need to do is add some code to push the dragged tile onto placedTiles to support "Undo" and go back to onCreate to replace the calls to setOnTouchListener with the calls to setOnDragListener that are commented below.
+
+Now try playing with drag and drop (and make sure that Undo still works).
 
 
 ---
